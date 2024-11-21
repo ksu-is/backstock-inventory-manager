@@ -2,10 +2,11 @@ import sqlite3
 from sqlite3 import Error
 import datetime
 import os
+import csv
 
 # Define the path to the database
 path_root = os.path.dirname(os.path.abspath(__file__))
-database_file_path = str(path_root) + "/myinventory.db"
+database_file_path = str(path_root) + "/backstock.db"
 print("HERE is the database file:", database_file_path)
 
 # Create a connection to the database
@@ -85,6 +86,16 @@ def update_data():
         print(e)
         pass
 
+# Export db to excel-viewable csv file
+def export_csv():
+    with open("backstock.csv", 'w', newline="") as file:
+        writer = csv.writer(file)
+        cursor = conn.execute("SELECT * FROM inventory")
+        column_headers = [description[0] for description in cursor.description]
+        writer.writerows(column_headers)
+        writer.writerows(cursor.fetchall())
+        print("Exported database to backstock.csv!")
+
 # Delete item
 def delete_data():
     id_ = input("Enter the ID for the item to delete: ")
@@ -134,11 +145,13 @@ else:
     exit()
 
 while True:
-    print("\nWelcome to the Inventory Management System!")
+    print("\nWelcome to the Backstock Inventory Management System!")
     print("1 to view data")
     print("2 to insert a new item")
     print("3 to update an item")
     print("4 to delete an item")
+    print("5 to find database")
+    print("6 to export to csv (excel)")
     print("X to exit")
     choice = input("Choose an operation to perform: ")
     if choice == "1":
@@ -153,6 +166,10 @@ while True:
         update_data()
     elif choice == "4":
         delete_data()
+    elif choice == "5":
+        print(database_file_path)
+    elif choice == "6":
+        export_csv()
     elif choice.upper() == "X":
         conn.close()
         print("Goodbye!")
