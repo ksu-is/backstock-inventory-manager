@@ -1,7 +1,7 @@
 - [x] Create README
 - [ ] Clone and analyze related repository
-- [ ] Create basic functions (adding items, tagging, categorizing, etc)
-- [ ] Implement sql database
+- [x] Create basic functions (adding items, tagging, categorizing, etc)
+- [x] Implement sql database
 - [ ] Implement camera/barcode functions
 - [ ] Create webui frontend with LAN accessibility
 - [ ] Excel spreadsheet exporting
