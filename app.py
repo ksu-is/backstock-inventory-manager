@@ -8,7 +8,6 @@ import csv
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Required for flash messages
 
 # Database configuration
 path_root = os.path.dirname(os.path.abspath(__file__))
