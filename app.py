@@ -1,178 +1,155 @@
+# app.py
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import sqlite3
 from sqlite3 import Error
 import datetime
 import os
 import csv
+from werkzeug.utils import secure_filename
 
-# Define the path to the database
+app = Flask(__name__)
+app.secret_key = 'your-secret-key-here'  # Required for flash messages
+
+# Database configuration
 path_root = os.path.dirname(os.path.abspath(__file__))
-database_file_path = str(path_root) + "/backstock.db"
-print("HERE is the database file:", database_file_path)
+database_file_path = os.path.join(path_root, "backstock.db")
 
-# Create a connection to the database
-def create_connection(db_file):
+def create_connection():
     try:
-        connection = sqlite3.connect(db_file)
+        connection = sqlite3.connect(database_file_path)
+        connection.row_factory = sqlite3.Row  # This enables column access by name
         return connection
     except Error as e:
         print(e)
         return None
 
-# Insert new item
-def insert_data():
-    name = input("Enter the name of the item: ")
-    quantity = input("Enter the quantity: ")
-    tags = input("Enter tags (comma-separated): ")
-    location = input("Enter the item's location: ")
-    changemade = str(now.year) + "/" + str(now.month) + "/" + str(now.day)
-    try:
-        sql = "INSERT INTO inventory (name, quantity, tags, location, changemade) VALUES (?, ?, ?, ?, ?)"
-        conn.execute(sql, (name, quantity, tags, location, changemade))
-        conn.commit()
-        print("*** Data saved to database. ***")
-    except Error as e:
-        print("*** Insert error: ", e)
-        pass
-
-# View data
-def view_data():
-    try:
-        cursor = conn.execute("SELECT id, name, quantity, tags, location, changemade FROM inventory")
-        alldata = []
-        alldata.append(["ID", "Name", "Quantity", "Tags", "Location", "Last Update"])
-        for row in cursor:
-            thisrow = []
-            for x in range(6):
-                thisrow.append(row[x])
-            alldata.append(thisrow)
-        return alldata
-    except Error as e:
-        print(e)
-        pass
-
-# Update item
-def update_data():
-    for row in view_data():
-        thisrow = "  --> "
-        for item in row:
-            thisrow += str(item) + "  "
-        print(thisrow)
-    update_ID = input("Enter the ID of the item to edit: ")
-    print('''
-        1 = edit name
-        2 = edit quantity
-        3 = edit tags
-        4 = edit location
-    ''')
-    feature = input("Enter which feature of the item you want to edit: ")
-    update_value = input("Editing " + feature + ": enter the new value: ")
-
-    if feature == "1":
-        sql = "UPDATE inventory SET name = ? WHERE id = ?"
-    elif feature == "2":
-        sql = "UPDATE inventory SET quantity = ? WHERE id = ?"
-    elif feature == "3":
-        sql = "UPDATE inventory SET tags = ? WHERE id = ?"
-    elif feature == "4":
-        sql = "UPDATE inventory SET location = ? WHERE id = ?"
-        
-    try:
-        conn.execute(sql, (update_value, update_ID))
-        sql = "UPDATE inventory SET changemade = ? WHERE id = ?"
-        changemade = str(now.year) + "/" + str(now.month) + "/" + str(now.day)
-        conn.execute(sql, (changemade, update_ID))
-        conn.commit()
-    except Error as e:
-        print(e)
-        pass
-
-# Export db to excel-viewable csv file
-def export_csv():
-    with open("backstock.csv", 'w', newline="") as file:
-        writer = csv.writer(file)
-        cursor = conn.execute("SELECT * FROM inventory")
-        column_headers = [description[0] for description in cursor.description]
-        writer.writerows(column_headers)
-        writer.writerows(cursor.fetchall())
-        print("Exported database to backstock.csv!")
-
-# Delete item
-def delete_data():
-    id_ = input("Enter the ID for the item to delete: ")
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM inventory WHERE ID = ?", (id_,))
-    delete_item = cursor.fetchall()
-    confirm = input("Are you sure you want to delete " + id_ + " " + str(delete_item[0]) + "? (Enter 'y' to confirm.)")
-    if confirm.lower() == "y":
-        try:
-            delete_sql = "DELETE FROM inventory WHERE id = ?"
-            conn.execute(delete_sql, (id_,))
-            conn.commit()
-            print(id_ + " " + str(delete_item[0]) + " deleted.")
-        except Error as e:
-            print(e)
-            pass
-    else:
-        print("Deletion aborted.")
-
-# Initialize the database
 def initialize_database():
+    conn = create_connection()
+    if conn:
+        try:
+            sql = """
+            CREATE TABLE IF NOT EXISTS inventory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                quantity INTEGER DEFAULT 0,
+                tags TEXT DEFAULT '',
+                location TEXT DEFAULT '',
+                barcode TEXT DEFAULT '',
+                changemade TEXT DEFAULT ''
+            )
+            """
+            conn.execute(sql)
+            conn.commit()
+        except Error as e:
+            print("*** Database Initialization Error: ", e)
+        finally:
+            conn.close()
+
+# Initialize the database on startup
+initialize_database()
+
+@app.route('/')
+def index():
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM inventory ORDER BY name")
+    items = cursor.fetchall()
+    conn.close()
+    return render_template('index.html', items=items)
+
+@app.route('/add', methods=['GET', 'POST'])
+def add_item():
+    if request.method == 'POST':
+        name = request.form['name']
+        quantity = request.form['quantity']
+        tags = request.form['tags']
+        location = request.form['location']
+        barcode = request.form['barcode']
+        changemade = datetime.datetime.now().strftime("%Y/%m/%d")
+        
+        conn = create_connection()
+        try:
+            sql = "INSERT INTO inventory (name, quantity, tags, location, barcode, changemade) VALUES (?, ?, ?, ?, ?, ?)"
+            conn.execute(sql, (name, quantity, tags, location, barcode, changemade))
+            conn.commit()
+            flash('Item added successfully!', 'success')
+        except Error as e:
+            flash(f'Error adding item: {str(e)}', 'error')
+        finally:
+            conn.close()
+        return redirect(url_for('index'))
+    return render_template('add_item.html')
+
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+def edit_item(id):
+    conn = create_connection()
+    if request.method == 'POST':
+        name = request.form['name']
+        quantity = request.form['quantity']
+        tags = request.form['tags']
+        location = request.form['location']
+        barcode = request.form['barcode']
+        changemade = datetime.datetime.now().strftime("%Y/%m/%d")
+        
+        try:
+            sql = """UPDATE inventory 
+                     SET name=?, quantity=?, tags=?, location=?, barcode=?, changemade=? 
+                     WHERE id=?"""
+            conn.execute(sql, (name, quantity, tags, location, barcode, changemade, id))
+            conn.commit()
+            flash('Item updated successfully!', 'success')
+        except Error as e:
+            flash(f'Error updating item: {str(e)}', 'error')
+        finally:
+            conn.close()
+        return redirect(url_for('index'))
+    
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM inventory WHERE id=?", (id,))
+    item = cursor.fetchone()
+    conn.close()
+    return render_template('edit_item.html', item=item)
+
+@app.route('/delete/<int:id>')
+def delete_item(id):
+    conn = create_connection()
     try:
-        sql = """
-        CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            quantity INTEGER DEFAULT 0,
-            tags TEXT DEFAULT '',
-            location TEXT DEFAULT '',
-            changemade TEXT DEFAULT ''
-        )
-        """
-        conn.execute(sql)
+        conn.execute("DELETE FROM inventory WHERE id=?", (id,))
         conn.commit()
+        flash('Item deleted successfully!', 'success')
     except Error as e:
-        print("*** Database Initialization Error: ", e)
-
-# Main logic
-conn = create_connection(database_file_path)
-now = datetime.datetime.now()
-
-if conn:
-    print("Connected to database:", conn)
-    initialize_database()
-else:
-    print("Error connecting to database.")
-    exit()
-
-while True:
-    print("\nWelcome to the Backstock Inventory Management System!")
-    print("1 to view data")
-    print("2 to insert a new item")
-    print("3 to update an item")
-    print("4 to delete an item")
-    print("5 to find database")
-    print("6 to export to csv (excel)")
-    print("X to exit")
-    choice = input("Choose an operation to perform: ")
-    if choice == "1":
-        for row in view_data():
-            thisrow = "  --> "
-            for item in row:
-                thisrow += str(item) + "  "
-            print(thisrow)
-    elif choice == "2":
-        insert_data()
-    elif choice == "3":
-        update_data()
-    elif choice == "4":
-        delete_data()
-    elif choice == "5":
-        print(database_file_path)
-    elif choice == "6":
-        export_csv()
-    elif choice.upper() == "X":
+        flash(f'Error deleting item: {str(e)}', 'error')
+    finally:
         conn.close()
-        print("Goodbye!")
-        break
-    else:
-        print("Invalid choice. Please try again.")
+    return redirect(url_for('index'))
+
+@app.route('/export')
+def export_csv():
+    try:
+        conn = create_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM inventory")
+        
+        # Create a temporary CSV file
+        csv_file_path = os.path.join(path_root, "backstock.csv")
+        with open(csv_file_path, 'w', newline='') as file:
+            writer = csv.writer(file)
+            # Write headers
+            writer.writerow([description[0] for description in cursor.description])
+            # Write data
+            writer.writerows(cursor.fetchall())
+        
+        return send_file(
+            csv_file_path,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='backstock.csv'
+        )
+    except Error as e:
+        flash(f'Error exporting CSV: {str(e)}', 'error')
+        return redirect(url_for('index'))
+    finally:
+        conn.close()
+
+if __name__ == '__main__':
+    app.run(debug=True)
